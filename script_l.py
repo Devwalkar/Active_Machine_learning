@@ -24,7 +24,7 @@ from keras.models import load_model
 #from keras.utils.np_utils import probas_to_classes
 ######################################################################################################
 Expt_load = 'exp01.hdf5'
-Expt_save = 'exp02.hdf5'
+Expt_save = 'exp03.hdf5'
 
 
 from classifier import Classifier
@@ -46,6 +46,7 @@ def add_file_to_iterator(f):
 	train_it.classes = np.append(train_it.classes, yi)
 	train_it.nb_sample = len(train_it.filenames)
 	train_it.n = len(train_it.filenames)
+	print train_it.n
 	train_it.batch_index = 0
 	train_it.total_batches_seen = 0
 	#train_it.index_generator = train_it._flow_index(train_it.n, train_it.batch_size, train_it.shuffle, None)
@@ -55,14 +56,15 @@ def add_file_to_iterator(f):
 	oracle_it.filenames.remove(f)
 	oracle_it.classes = np.delete(oracle_it.classes, idx)
 	oracle_it.nb_sample = len(oracle_it.filenames)
+	print oracle_it.nb_sample
 	oracle_it.n = len(oracle_it.filenames)
 	oracle_it.batch_index = 0
 	oracle_it.total_batches_seen = 0
 	#oracle_it.index_generator = oracle_it._flow_index(oracle_it.n, oracle_it.batch_size, oracle_it.shuffle, None)
 	#oracle_it.index_generator = oracle_it._flow_index()
 
-	train_it, oracle_it, val_it, test_it = train.get_data_iterators(batch_size=8, data_dir='mess_cb', target_size=(512, 512),
-																	rescale=1/255., fill_mode='constant', load_train_data=False, color_mode='rgb')
+#	train_it, oracle_it, val_it, test_it = train.get_data_iterators(batch_size=8, data_dir='mess_cb', target_size=(512, 512),
+#																	rescale=1/255., fill_mode='constant', load_train_data=False, color_mode='rgb')
 
 
 '''
@@ -123,7 +125,7 @@ def train_and_evaluate(batch_size=8, img_dir='mess_cb',
 	global train_it,oracle_it,val_it,test_it				   
 	# Initialization
 	active_learning_mode = 1
-	epochs = 20
+	epochs = 1
 	oracle_len = 568    #71       #568
 	best_loss = 10
 	train_len = 200   #25            #200
