@@ -150,10 +150,10 @@ def train_and_evaluate(batch_size=8, img_dir='mess_cb',
 		#model.load_weights(exp6.hdf5)
     	#model.load_weights(exp_name)		
 
-		model.fit_generator(train_it, train_len, epochs, validation_data=val_it, validation_steps=192, verbose=2, callbacks=callbacks)
+		model.fit_generator(train_it, (train_len/batch_size), epochs, validation_data=val_it, validation_steps=192/batch_size, verbose=2, callbacks=callbacks)
 
 	    # Make sure that you are not shuffling the prediction data in val_it
-		pred_prob = model.predict_generator(oracle_it, oracle_len)
+		pred_prob = model.predict_generator(oracle_it, oracle_len/batch_size)
 	
 		active_learning_mode, num_imgs_added = active_learning(pred_prob,img_dir)
 		print('Added {0} images.'.format(num_imgs_added))
