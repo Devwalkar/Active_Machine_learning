@@ -20,18 +20,16 @@ from utils.visualization import prepare_img_to_plot, parula_map
 from utils.visualization import get_gaussian_lesion_map as get_lesion_map
 from keras.engine import Layer
 from keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array
-from keras.models import load_model
+from keras.models import load_model,save_model
 #from keras.utils.np_utils import probas_to_classes
 ######################################################################################################
 Expt_load = 'exp01.hdf5'
 Expt_save = 'exp03.hdf5'
 
-
 from classifier import Classifier
 '''
 FUNCTION DEFINITIONS
 '''
-
 
 def add_file_to_iterator(f):
 	global train_it,oracle_it,val_it,test_it
@@ -46,7 +44,7 @@ def add_file_to_iterator(f):
 	train_it.classes = np.append(train_it.classes, yi)
 	train_it.nb_sample = len(train_it.filenames)
 	train_it.n = len(train_it.filenames)
-	print train_it.n
+	print 'Train_Len:',train_it.n
 	train_it.batch_index = 0
 	train_it.total_batches_seen = 0
 	#train_it.index_generator = train_it._flow_index(train_it.n, train_it.batch_size, train_it.shuffle, None)
@@ -56,7 +54,7 @@ def add_file_to_iterator(f):
 	oracle_it.filenames.remove(f)
 	oracle_it.classes = np.delete(oracle_it.classes, idx)
 	oracle_it.nb_sample = len(oracle_it.filenames)
-	print oracle_it.nb_sample
+	print 'Oracle_len:',oracle_it.nb_sample
 	oracle_it.n = len(oracle_it.filenames)
 	oracle_it.batch_index = 0
 	oracle_it.total_batches_seen = 0
@@ -137,30 +135,33 @@ def train_and_evaluate(batch_size=8, img_dir='mess_cb',
     #####################################################################################################
     # Loading saved model here
 
-	model = load_model(Expt_load)
+	#model = load_model(Expt_load)
+	classifier = Classifier()
+	model = classifier.prepare_to_init(2e-4)
+	model.fit_generator(train_it, (train_len/batch_size), epochs, validation_data=val_it, validation_steps=192/batch_size, verbose=2, callbacks=callbacks)
+    
+	print 'Model trained with top layers'
 
-	for layer in model.layers:
-		layer.trainable = True
+	model = classifier.prepare_to_finetune(0.0001)
+	model.fit_generator(train_it, (train_len/batch_size), epochs, validation_data=val_it, validation_steps=192/batch_size, verbose=2, callbacks=callbacks)
 
-	opt = Adam(lr=2e-4)
-	model.compile(optimizer=opt, loss='binary_crossentropy', metrics=['acc'])	
+	print 'Finetuned the model'
+	print 'Saving the model'
+	model.save('exp01.hdf5')	
 
 	while active_learning_mode:
-		print('Evaluating model {0}:'.format(Expt_load.split('.')[0]))
-		#model.load_weights(exp6.hdf5)
+		#print('Evaluating model {0}:'.format(Expt_load.split('.')[0]))
     	#model.load_weights(exp_name)		
 
 		model.fit_generator(train_it, (train_len/batch_size), epochs, validation_data=val_it, validation_steps=192/batch_size, verbose=2, callbacks=callbacks)
 
 	    # Make sure that you are not shuffling the prediction data in val_it
-		pred_prob = model.predict_generator(oracle_it, oracle_len/batch_size)
+		pred_prob = model.predict_generator(oracle_it,oracle_len/batch_size)
 	
 		active_learning_mode, num_imgs_added = active_learning(pred_prob,img_dir)
 		print('Added {0} images.'.format(num_imgs_added))
 		oracle_len = oracle_len - num_imgs_added
-		print 'Oracle_len:',oracle_len
 		train_len = train_len + num_imgs_added
-		print 'Train_len',train_len
 
 	print('Train AUC = {0}'.format(get_auc_score(model, train_it, train_len)))
 	print('Validation AUC = {0}'.format(get_auc_score(model, val_it, 192)))
@@ -191,10 +192,10 @@ if __name__ == '__main__':
 		for context_blocks in range(max_context + 1):
 			experiments.append([n_blocks, context_blocks])
 
-	train_it,oracle_it,val_it,test_it = train.get_data_iterators(batch_size=8,data_dir='mess_cb',target_size=(512, 512),rescale=1/255,fill_mode='constant',load_train_data=False,color_mode='rgb')
+	train_it,oracle_it,val_it,test_it = train.get_data_iterators(batch_size=1,data_dir='mess_cb',target_size=(512, 512),rescale=1/255,fill_mode='constant',load_train_data=False,color_mode='rgb')
 
 
-	train_and_evaluate(out_size=out_sizes[n_blocks], f_size=f_sizes[n_blocks],
+	train_and_evaluate(batch_size=1, out_size=out_sizes[n_blocks], f_size=f_sizes[n_blocks],
                            exp_name=Expt_save, n_blocks=n_blocks,
                            context_blocks=context_blocks+1, img_dir=args.img_dir)
     
