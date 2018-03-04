@@ -1,4 +1,4 @@
-from keras.layers import Dense
+from keras.layers import Dense,BatchNormalization
 from keras.models import Model
 from keras.optimizers import Adam
 from keras.layers.core import Dropout
@@ -22,6 +22,10 @@ class Classifier:
 
         x = GlobalAveragePooling2D()(self.base_model.output)
         x = Dense(n_features)(x)
+        x = BatchNormalization()(x)
+        x = LeakyReLU(0.02)(x)
+        x = Dense(n_features/2)(x)
+        x = BatchNormalization()(x)
         x = LeakyReLU(0.02)(x)
         x = Dropout(0.5)(x)
         out = Dense(1, activation='sigmoid')(x)
