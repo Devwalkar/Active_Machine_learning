@@ -60,7 +60,7 @@ def get_data_iterators(horizontal_flip=False, vertical_flip=False, width_shift_r
                                            batch_size=batch_size, target_size=target_size,
                                            class_mode='binary', color_mode=color_mode, seed=seed)
 
-    return train_it,oracle_it,val_it, test_it
+    return X_train,y_train,X_oracle,y_oracle,X_val,y_val
 
 
 def get_lesion_iterators(horizontal_flip=False, vertical_flip=False, width_shift_range=0.,
