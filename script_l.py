@@ -21,28 +21,32 @@ from utils.visualization import get_gaussian_lesion_map as get_lesion_map
 from keras.engine import Layer
 from keras.preprocessing.image import ImageDataGenerator, load_img, img_to_array
 from keras.models import load_model,save_model
-#from keras.utils.np_utils import probas_to_classes
+from classifier import Classifier
 ######################################################################################################
 Expt_load = 'exp01.hdf5'
-Expt_save = 'exp03.hdf5'
-
-from classifier import Classifier
+Expt_save = 'exp02.hdf5'
+LOAD_MODEL = True
+####################################################################################################3
 '''
 FUNCTION DEFINITIONS
 '''
-
 def add_file_to_iterator(f):
 	global X_train,Y_train,X_oracle,Y_oracle
-	Addition = np.reshape(X_oracle[f,:,:,:],(1,512,512,3))
+	Addition = np.reshape(X_oracle[f,:,:,:],(1,3,512,512))
 	X_train = np.concatenate((X_train,Addition),axis=0)
 	Y_train = np.append(Y_train,Y_oracle[f])
 	
 	X_oracle = np.delete(X_oracle,f,axis=0)
 	Y_oracle = np.delete(Y_oracle,f,axis=0)
 	print 'X_train_length:',len(X_train)
-	print 'Y_train_length:',len(Y_train)
 	print 'X_oracle length:',len(X_oracle)
-	print 'Y_oracle length:',len(Y_oracle)
+	np.save('X_train.npy',X_train)
+	np.save('Y_train.npy',Y_train)
+	np.save('X_oracle.npy',X_oracle)
+	np.save('Y_oracle.npy',Y_oracle)
+	np.save('X_val.npy',X_val)
+	np.save('Y_val.npy',Y_val)
+	print 'Data saved'
 
 ##############################################################################################
 
@@ -83,29 +87,29 @@ def train_and_evaluate(batch_size=8, img_dir='mess_cb',
 	global X_train,Y_train,X_oracle,Y_oracle,X_val,Y_val				   
 	# Initialization
 	active_learning_mode = 1
-	epochs = 1
+	epochs = 30
 
 	checkpointer = ModelCheckpoint(filepath= exp_name, monitor = 'val_acc', verbose=1, save_best_only=True, save_weights_only=False)
-	early = EarlyStopping(monitor = 'val_acc',patience=2, verbose=1)
+	early = EarlyStopping(monitor = 'val_acc',patience=3, verbose=1)
 	callbacks = [checkpointer,early]
     #####################################################################################################
     # Loading saved model here
+	if LOAD_MODEL == True:
+		model = load_model(Expt_load)
+	else:
+		classifier = Classifier()
+		model = classifier.prepare_to_init(2e-4)
+		model.fit(X_train, Y_train,epochs= epochs, validation_data=(X_val,Y_val), verbose=1, callbacks=callbacks)
 
-	model = load_model(Expt_load)
-	'''
-	classifier = Classifier()
-	model = classifier.prepare_to_init(2e-4)
-	model.fit(X_train, Y_train,epochs= epochs, validation_data=(X_val,Y_val), verbose=1, callbacks=callbacks)
+		print 'Model trained with top layers'
 
-	print 'Model trained with top layers'
+		model = classifier.prepare_to_finetune(0.0001)
+		model.fit(X_train, Y_train,epochs= epochs, validation_data=(X_val,Y_val), verbose=1, callbacks=callbacks)
 
-	model = classifier.prepare_to_finetune(0.0001)
-	model.fit(X_train, Y_train,epochs= epochs, validation_data=(X_val,Y_val), verbose=1, callbacks=callbacks)
-
-	print 'Finetuned the model'
-	print 'Saving the model'
-	model.save('exp01.hdf5')	
-    '''
+		print 'Finetuned the model'
+		print 'Saving the model'
+		model.save('exp01.hdf5')	
+    
 	while active_learning_mode:
 		model.fit(X_train, Y_train, epochs=epochs, validation_data=(X_val,Y_val), verbose=1, callbacks=callbacks)
 		pred_prob = model.predict(X_oracle,batch_size=200,verbose=1)
@@ -133,11 +137,20 @@ if __name__ == '__main__':
 		for context_blocks in range(max_context + 1):
 			experiments.append([n_blocks, context_blocks])
 
-	X_train,Y_train,X_oracle,Y_oracle,X_val,Y_val = train.get_data_iterators(batch_size=1,data_dir='mess_cb',target_size=(512, 512),rescale=1/255,fill_mode='constant',load_train_data=True,color_mode='rgb')
+	if LOAD_MODEL==True:
+		X_train = np.load('X_train.npy',encoding='bytes')
+		Y_train = np.load('Y_train.npy',encoding='bytes')
+		X_oracle = np.load('X_oracle.npy',encoding='bytes')
+		Y_oracle = np.load('Y_oracle.npy',encoding='bytes')
+		X_val = np.load('X_val.npy',encoding='bytes')
+		Y_val = np.load('Y_val.npy',encoding='bytes')
+	else:		
+		X_train,Y_train,X_oracle,Y_oracle,X_val,Y_val = train.get_data_iterators(batch_size=1,data_dir='mess_cb',target_size=(512, 512),rescale=1/255,fill_mode='constant',load_train_data=True,color_mode='rgb')
     
-	X_train = np.reshape(X_train,(200,512,512,3))
-	X_oracle = np.reshape(X_oracle,(568,512,512,3))
-	X_val = np.reshape(X_val,(192,512,512,3))
+		X_train = np.reshape(X_train,(200,3,512,512))
+		X_oracle = np.reshape(X_oracle,(568,3,512,512))
+		X_val = np.reshape(X_val,(192,3,512,512))
+
 
 	train_and_evaluate(batch_size=1, out_size=out_sizes[n_blocks], f_size=f_sizes[n_blocks],
                            exp_name=Expt_save, n_blocks=n_blocks,
