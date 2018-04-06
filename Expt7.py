@@ -37,6 +37,7 @@ Expt_save = 'exp_M_07.hdf5'
 LOAD_MODEL = False
 No_images_to_add = 5
 No_images_to_remove = 5
+working_threshold = 4
 No_of_images_to_start_with = 100
 Iterations= 20
 
@@ -44,6 +45,32 @@ Iterations= 20
 '''
 FUNCTION DEFINITIONS
 '''
+def remove_file_from_iterator(Indices):
+	global X_train,Y_train,X_working,Y_working 	
+
+	if len(X_working)==0:
+		Addition = np.reshape(np.take(X_train,Indices,axis=0),(len(Indices),3,512,512))
+		X_working = Addition
+		Addition = np.take(Y_train,Indices,axis=0)
+		Y_working = Addition
+	else:	
+		Addition = np.reshape(np.take(X_train,Indices,axis=0),(len(Indices),3,512,512))
+		X_working = np.concatenate((X_working,Addition),axis=0)
+		Addition = np.take(Y_train,Indices,axis=0)
+		Y_working = np.append(Y_working,Addition)
+
+	X_train = np.delete(X_train,Indices,axis=0)
+	Y_train = np.delete(Y_train,Indices,axis=0)
+    
+	print ('X_train_length:',len(X_train))
+	print ('X_working length:',len(X_working))
+
+	np.save('X_train.npy',X_train)
+	np.save('Y_train.npy',Y_train)
+	np.save('X_working.npy',X_working)
+	np.save('Y_working.npy',Y_working)
+
+########################################################################################################333	
 def add_file_to_train(Indices):
 	global X_train,Y_train,X_oracle,Y_oracle
 
@@ -64,6 +91,29 @@ def add_file_to_train(Indices):
 	np.save('Y_oracle.npy',Y_oracle)
 	np.save('X_val.npy',X_val)
 	np.save('Y_val.npy',Y_val)
+
+##############################################################################################
+def add_file_from_working(Indices):
+	global X_train,Y_train,X_working,Y_working
+
+	Addition = np.reshape(np.take(X_working,Indices,axis=0),(len(Indices),3,512,512))
+	X_train = np.concatenate((X_train,Addition),axis=0)
+	Addition = np.take(Y_working,Indices,axis=0)
+	Y_train = np.append(Y_train,Addition)
+
+	X_working = np.delete(X_working,Indices,axis=0)
+	Y_working = np.delete(Y_working,Indices,axis=0)
+
+	print 'X_train_length:',len(X_train)
+	print 'X_working length:',len(X_working)
+
+	np.save('X_train.npy',X_train)
+	np.save('Y_train.npy',Y_train)
+	np.save('X_working.npy',X_working)
+	np.save('Y_working.npy',Y_working)
+	np.save('X_val.npy',X_val)
+	np.save('Y_val.npy',Y_val)
+	#print 'Data saved'
 
 ########################################################################################################3
 def calculate_descriptors(X):
@@ -140,12 +190,66 @@ def create_trainset():
 
 	return X_train,Y_train
 
+#########################################################################################################33
+def active_learning_working(working_prob):
+	global working_threshold,X_working,Y_working
+
+	working_prob = array(working_prob)
+	working_loss = zeros((working_prob.shape))
+
+	for i,prob in enumerate(working_prob):
+		if prob == 1 or prob == 0:
+			working_loss[i] = 0
+		else:
+			working_loss[i] = -Y_working[i]*log2(prob) - (1-Y_working[i])*log2(1-prob)
+
+	Sorted_entropy = np.flip(np.sort(working_loss,axis=0),axis=0)
+	Sorted_indexes = np.flip(np.argsort(working_loss,axis=0),axis=0)
+
+	add_indices = []
+	for i in range(len(X_working)):
+		if Sorted_entropy[i]>=working_threshold:
+			add_indices.append(Sorted_indexes[i])
+
+	Sorted_entropy = np.take(Sorted_entropy,add_indices,axis=0)
+	
+	for i in range(len(Sorted_entropy)):
+
+		print('Adding {0}th sample from working set having crossentropy: {1}'.format(i,Sorted_entropy[i]))
+
+	add_file_from_working(add_indices)
+
 #################################################################################################################333
 
-def active_learning(oracle_gradients):
-	global No_images_to_add,t
+def active_learning(oracle_gradients,train_prob):
+	global No_images_to_add,No_images_to_remove, t,Y_train
 
 	oracle_gradients = array(oracle_gradients)
+	train_prob = array(train_prob)
+	Train_Entrophy = zeros((train_prob.shape))
+
+	for i,prob in enumerate(train_prob):
+		if prob == 1 or prob == 0:
+			Train_Entrophy[i] = 0
+		else:
+			Train_Entrophy[i] = -Y_train[i]*log2(prob) - (1-Y_train[i])*log2(1-prob)
+
+	Sorted_entropy = np.sort(Train_Entrophy,axis=0)[:No_images_to_remove]
+	Sorted_indexes = np.argsort(Train_Entrophy,axis=0)[:No_images_to_remove]
+
+	remove_indices = []
+	for i in range(No_images_to_remove):
+		if ((train_prob[Sorted_indexes[i]]>0.5) and (Y_train[Sorted_indexes[i]]==0)) or ((train_prob[Sorted_indexes[i]]<0.5) and (Y_train[Sorted_indexes[i]]==1)):
+			remove_indices.append(i)
+
+	Sorted_entropy = np.delete(Sorted_entropy,remove_indices,axis=0)
+	Sorted_indexes = np.delete(Sorted_indexes,remove_indices,axis=0)
+
+	for i in range(len(Sorted_entropy)):
+
+		print('Removing {0}th sample having crossentropy: {1}'.format(i,Sorted_entropy[i]))
+
+	remove_file_from_iterator(Sorted_indexes)
 
 	Sorted_gradients = np.flip(np.sort(oracle_gradients,axis=0),axis=0)[:No_images_to_add]
 	Sorted_indexes = np.flip(np.argsort(oracle_gradients,axis=0),axis=0)[:No_images_to_add]
@@ -164,7 +268,7 @@ def train_and_evaluate(batch_size=8, img_dir='mess_cb',
                        zoom_range=0.03, exp_name='exp0.hdf5', n_blocks=4, context_blocks=1,
                        patience=75):
 
-	global X_train,Y_train,X_oracle,Y_oracle,X_val,Y_val,t,Iterations			   
+	global X_train,Y_train,X_oracle,Y_oracle,X_val,Y_val,t,Iterations,X_working,Y_working			   
 
 	checkpointer = ModelCheckpoint(filepath= exp_name, monitor = 'val_acc', verbose=1, save_best_only=True, save_weights_only=True)
 	callbacks2 = [checkpointer]
@@ -177,14 +281,14 @@ def train_and_evaluate(batch_size=8, img_dir='mess_cb',
 	else:
 		classifier = Classifier()
 		model = classifier.prepare_to_finetune(7e-5)
-
-	model.fit(X_train,Y_train,epochs=1,shuffle=True,batch_size=32, validation_data=(X_val,Y_val), verbose=1, callbacks=callbacks2)
+		model.fit(X_train,Y_train,epochs=1,shuffle=True,batch_size=32, validation_data=(X_val,Y_val), verbose=1, callbacks=callbacks2)
 
 #################################################################################################################
-# Defining jacobian computation here
+    # Defining jacobian computation here
 
 	sess = K.get_session()
 	model_grad = tf.gradients(model.output,model.input)
+	#model_grad = K.gradients(K.dot(model.layers[-1].input,model.layers[-1].kernel)+model.layers[-1].bias, model.input)
 	
 	for i in range(Iterations):
 		model.load_weights(Expt_load)
@@ -206,9 +310,14 @@ def train_and_evaluate(batch_size=8, img_dir='mess_cb',
 		Jacobian_oracle3 = np.sqrt(np.sum(np.sum(np.sum(np.square(W3),axis=-1),axis=-1),axis=-1))
 		Jacobian_oracle4 = np.sqrt(np.sum(np.sum(np.sum(np.square(W4),axis=-1),axis=-1),axis=-1))
 
-		Jacobian_oracle = np.concatenate((Jacobian_oracle1,Jacobian_oracle2,Jacobian_oracle3,Jacobian_oracle4),axis=0)			
+		Jacobian_oracle = np.concatenate((Jacobian_oracle1,Jacobian_oracle2,Jacobian_oracle3,Jacobian_oracle4),axis=0)
+
+		train_prob = model.predict(X_train,verbose=1)			
 												
-		active_learning(Jacobian_oracle)
+		active_learning(Jacobian_oracle,train_prob)
+		if len(X_working)!=0:
+			working_prob = model.predict(X_working,verbose=1)
+			active_learning_working(working_prob)
 		
 ###############################################################################################################
 
@@ -234,6 +343,8 @@ if __name__ == '__main__':
 		Y_oracle = np.load('Y_oracle.npy',encoding='bytes')
 		X_val = np.load('X_val.npy',encoding='bytes')
 		Y_val = np.load('Y_val.npy',encoding='bytes')
+		X_working = np.load('X_working.npy',encoding='bytes') 
+		Y_working = np.load('Y_working.npy',encoding='bytes')
 	else:		
 		X_train,Y_train,X_oracle,Y_oracle,X_val,Y_val = train.get_data_iterators(batch_size=1,data_dir='mess_cb',target_size=(512, 512),rescale=1/255,fill_mode='constant',load_train_data=True,color_mode='rgb')
     
@@ -253,6 +364,9 @@ if __name__ == '__main__':
 		X_train = np.reshape(X_train,(No_of_images_to_start_with,3,512,512))
 		X_oracle = np.reshape(X_oracle,(768-No_of_images_to_start_with,3,512,512))
 
+		X_working = array([])
+		Y_working = array([])
+
 		np.save('X_train.npy',X_train)
 		np.save('Y_train.npy',Y_train)
 		np.save('X_oracle.npy',X_oracle)
@@ -260,7 +374,7 @@ if __name__ == '__main__':
 		np.save('X_val.npy',X_val)
 		np.save('Y_val.npy',Y_val)
 
-    t=0
+		t=0
 
 	train_and_evaluate(batch_size=1, out_size=out_sizes[n_blocks], f_size=f_sizes[n_blocks],
                            exp_name=Expt_save, n_blocks=n_blocks,
